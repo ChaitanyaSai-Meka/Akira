@@ -7,6 +7,10 @@ import smtplib
 from email.mime.multipart import MIMEMultipart  
 from email.mime.text import MIMEText
 from typing import Optional
+import subprocess
+import os
+import time
+import shlex
 
 @function_tool()
 async def get_weather(
@@ -110,3 +114,73 @@ async def send_email(
     except Exception as e:
         logging.error(f"Error sending email: {e}")
         return f"An error occurred while sending email: {str(e)}"
+
+APP_ALIASES = {
+    "whatsapp": "WhatsApp",
+    "arc": "Arc",
+    "safari": "Safari",
+    "chrome": "Google Chrome",
+    "spotify": "Spotify",
+    "notes": "Notes",
+    "terminal": "Terminal",
+    "vscode": "Visual Studio Code",
+    "finder": "Finder",
+    "slack": "Slack",
+}
+
+APP_LOCATIONS = [
+    "/Applications",
+    "/System/Applications",
+    os.path.expanduser("~/Applications")
+]
+
+
+def find_app_path(app_name: str) -> Optional[str]:
+    """
+    Try to locate the app using known folders first, then fallback to Spotlight.
+    """
+    for base in APP_LOCATIONS:
+        full_path = os.path.join(base, f"{app_name}.app")
+        if os.path.exists(full_path):
+            return full_path
+
+    try:
+        result = subprocess.run(
+            ["mdfind", f'kMDItemKind == "Application" && kMDItemDisplayName == "{app_name}"'],
+            capture_output=True,
+            text=True
+        )
+        paths = result.stdout.strip().split("\n")
+        for path in paths:
+            if path.endswith(f"{app_name}.app") and os.path.exists(path):
+                return path
+    except Exception as e:
+        print(f"[ERROR] mdfind failed: {e}")
+    
+    return None
+
+
+@function_tool()
+async def open_app_or_website(
+    context: RunContext,
+    app_name: str,
+    website: Optional[str] = None
+) -> str:
+    try:
+        normalized_app = APP_ALIASES.get(app_name.lower(), app_name)
+        app_path = find_app_path(normalized_app)
+
+        if not app_path:
+            return f"Couldn’t find app named '{normalized_app}' in known locations."
+
+        subprocess.Popen(["open", shlex.quote(app_path)], shell=True)
+        time.sleep(2)
+
+        if website:
+            subprocess.Popen(["open", website])
+            return f"Opened {normalized_app} from path: {app_path} and navigated to {website}"
+
+        return f"Opened {normalized_app} from path: {app_path}"
+
+    except Exception as e:
+        return f"Error opening {app_name}: {str(e)}"
