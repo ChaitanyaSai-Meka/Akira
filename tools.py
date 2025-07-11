@@ -134,29 +134,14 @@ APP_LOCATIONS = [
     os.path.expanduser("~/Applications")
 ]
 
-
-def find_app_path(app_name: str) -> Optional[str]:
+def find_app_path(app_name: str) -> str:
     """
-    Try to locate the app using known folders first, then fallback to Spotlight.
+    Search for the application in known locations and return its path if found.
     """
-    for base in APP_LOCATIONS:
-        full_path = os.path.join(base, f"{app_name}.app")
-        if os.path.exists(full_path):
-            return full_path
-
-    try:
-        result = subprocess.run(
-            ["mdfind", f'kMDItemKind == "Application" && kMDItemDisplayName == "{app_name}"'],
-            capture_output=True,
-            text=True
-        )
-        paths = result.stdout.strip().split("\n")
-        for path in paths:
-            if path.endswith(f"{app_name}.app") and os.path.exists(path):
-                return path
-    except Exception as e:
-        print(f"[ERROR] mdfind failed: {e}")
-    
+    for location in APP_LOCATIONS:
+        app_path = os.path.join(location, f"{app_name}.app")
+        if os.path.exists(app_path):
+            return app_path
     return None
 
 
@@ -167,20 +152,25 @@ async def open_app_or_website(
     website: Optional[str] = None
 ) -> str:
     try:
+        logging.info(f"Attempting to open app: {app_name}, website: {website}")
         normalized_app = APP_ALIASES.get(app_name.lower(), app_name)
+        logging.info(f"Normalized app name: {normalized_app}")
         app_path = find_app_path(normalized_app)
 
         if not app_path:
+            logging.error(f"Couldn't find app path for '{normalized_app}'")
             return f"Couldn’t find app named '{normalized_app}' in known locations."
 
-        subprocess.Popen(["open", shlex.quote(app_path)], shell=True)
-        time.sleep(2)
+        logging.info(f"Found app path: {app_path}")
+        subprocess.Popen(["open", app_path])
 
         if website:
+            logging.info(f"Attempting to open website: {website}")
             subprocess.Popen(["open", website])
             return f"Opened {normalized_app} from path: {app_path} and navigated to {website}"
 
         return f"Opened {normalized_app} from path: {app_path}"
 
     except Exception as e:
+        logging.error(f"Error opening {app_name}: {str(e)}", exc_info=True)
         return f"Error opening {app_name}: {str(e)}"
