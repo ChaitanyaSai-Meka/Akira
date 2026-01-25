@@ -26,7 +26,7 @@ async def stream_mic():
             blocksize=FRAME_SIZE,
             callback=callback,
         ):
-            print("🎤 Speaking... Press Ctrl+C to stop")
+            print(" Speaking... Press Ctrl+C to stop")
             await asyncio.Future()  
 
 asyncio.run(stream_mic())
