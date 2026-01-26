@@ -1,93 +1,125 @@
 import numpy as np
 
-
 class VAD:
     """
-    Adaptive Voice Activity Detector (VAD)
+    Non-ML Adaptive Voice Activity Detector
 
-    Uses:
-    - Relative RMS energy (adaptive noise floor)
-    - Relative Zero Crossing Rate (adaptive)
-    - Temporal smoothing (minimum speech duration)
-    - Hysteresis (stable start / end detection)
+    Features:
+    - Relative RMS energy
+    - Zero Crossing Rate (range-based)
+    - Speech-band energy ratio
+    - Spectral flatness
+    - Temporal smoothing + hysteresis
     """
 
     def __init__(
         self,
-        energy_ratio: float = 3.0,
-        zcr_ratio: float = 1.5,
-        min_speech_frames: int = 4,  
-        min_silence_frames: int = 8,  
-        alpha: float = 0.95           
+        sample_rate: int = 16000,
+        frame_size: int = 320,
+        energy_ratio: float = 2.0,      
+        min_speech_frames: int = 5,     
+        min_silence_frames: int = 40,   
+        alpha: float = 0.95
     ):
-    
-        self.rms_floor = 0.0
-        self.zcr_floor = 0.0
+        self.sample_rate = sample_rate
+        self.frame_size = frame_size
+
+        self.energy_ratio = energy_ratio
         self.alpha = alpha
 
-    
-        self.energy_ratio = energy_ratio
-        self.zcr_ratio = zcr_ratio
-
-    
         self.min_speech_frames = min_speech_frames
         self.min_silence_frames = min_silence_frames
+
+        self.noise_rms = 0.0
 
         self.speech_frames = 0
         self.silence_frames = 0
         self.in_speech = False
 
+        self.pre_emphasis = 0.97
+        self.prev_sample = 0.0
 
-    def _rms(self, frame: np.ndarray) -> float:
-        return np.sqrt(np.mean(frame.astype(np.float32) ** 2))
+        self.freqs = np.fft.rfftfreq(frame_size, 1 / sample_rate)
+        self.speech_band = np.where(
+            (self.freqs >= 300) & (self.freqs <= 3400)
+        )[0]
 
-    def _zcr(self, frame: np.ndarray) -> float:
-        return np.mean(np.abs(np.diff(np.sign(frame))))
+    def _pre_emphasis(self, frame):
+        emphasized = np.empty_like(frame, dtype=np.float32)
+        emphasized[0] = frame[0] - self.pre_emphasis * self.prev_sample
+        emphasized[1:] = frame[1:] - self.pre_emphasis * frame[:-1]
+        self.prev_sample = frame[-1]
+        return emphasized
 
+    def _rms(self, frame):
+        return np.sqrt(np.mean(frame ** 2) + 1e-8)
+
+    def _zcr(self, frame):
+        return np.mean(np.abs(np.diff(np.sign(frame)))) / 2
+
+    def _band_energy_ratio(self, mag):
+        band_energy = np.sum(mag[self.speech_band])
+        total_energy = np.sum(mag) + 1e-8
+        return band_energy / total_energy
+
+    def _spectral_flatness(self, mag):
+        mag = mag + 1e-8
+        return np.exp(np.mean(np.log(mag))) / np.mean(mag)
 
     def process(self, frame: np.ndarray) -> str:
-        """
-        Process one audio frame.
-
-        Returns one of:
-        - "silence"
-        - "speech_start"
-        - "speech"
-        - "speech_end"
-        """
+        frame = frame.astype(np.float32)
+        frame = self._pre_emphasis(frame)
 
         rms = self._rms(frame)
         zcr = self._zcr(frame)
 
-    
-        if self.rms_floor == 0.0:
-            self.rms_floor = rms
-            self.zcr_floor = zcr
+        spectrum = np.fft.rfft(frame * np.hanning(len(frame)))
+        mag = np.abs(spectrum)
+
+        band_ratio = self._band_energy_ratio(mag)
+        flatness = self._spectral_flatness(mag)
+
+        if self.noise_rms == 0.0:
+            self.noise_rms = rms * 0.5
             return "silence"
 
-    
-        is_speech_frame = (
-            rms > self.rms_floor * self.energy_ratio and
-            zcr > self.zcr_floor * self.zcr_ratio
+        energy_ok = rms > self.noise_rms * self.energy_ratio
+
+        continue_energy_ok = rms > self.noise_rms * 0.9
+
+        zcr_ok = zcr > 0.01
+        band_ok = band_ratio > 0.35
+        flatness_ok = flatness < 0.75
+
+        print(
+            f"rms={rms:.5f} noise={self.noise_rms:.5f} "
+            f"ratio={rms/self.noise_rms:.2f} "
+            f"zcr={zcr:.3f} "
+            f"band={band_ratio:.2f} "
+            f"flat={flatness:.2f}"
         )
 
-    
-        if not is_speech_frame:
-            self.rms_floor = (
-                self.alpha * self.rms_floor +
+        start_speech = (
+            energy_ok and
+            band_ok and
+            (flatness_ok or zcr_ok)
+        )
+
+        continue_speech = (
+            continue_energy_ok and
+            band_ok
+        )
+
+        if not self.in_speech and rms < self.noise_rms * 1.2:
+            self.noise_rms = (
+                self.alpha * self.noise_rms +
                 (1 - self.alpha) * rms
             )
-            self.zcr_floor = (
-                self.alpha * self.zcr_floor +
-                (1 - self.alpha) * zcr
-            )
 
-    
-        if is_speech_frame:
+        if start_speech or (self.in_speech and continue_speech):
             self.speech_frames += 1
             self.silence_frames = 0
 
-        
             if not self.in_speech and self.speech_frames >= self.min_speech_frames:
                 self.in_speech = True
                 return "speech_start"

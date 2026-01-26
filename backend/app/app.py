@@ -4,6 +4,7 @@ from app.audio_buffer import AudioBuffer
 from app.noise_suppressor import NoiseSuppressor
 from app.vad import VAD
 import numpy as np
+import asyncio
 
 load_dotenv()
 
@@ -19,25 +20,39 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("WebSocket connection accepted")
     audio_buffer = AudioBuffer(frame_size=320)
-    noise_suppressor = NoiseSuppressor(sample_rate=16000)
+    noise_suppressor = NoiseSuppressor()
     vad = VAD()
 
     try:
         while True:
-            audio_bytes = await websocket.receive_bytes()
+            try:
+                audio_bytes = await asyncio.wait_for(
+                    websocket.receive_bytes(),
+                    timeout=5.0 
+                )
+            except asyncio.TimeoutError:
+                await websocket.send_bytes(b"\x00")
+                continue
             samples = np.frombuffer(audio_bytes, dtype=np.int16)
             audio_buffer.add_samples(samples)
             while audio_buffer.has_frame():
                 frame = audio_buffer.get_frame()
-                clean_frame, is_speech = noise_suppressor.process(frame)
+                if len(frame) < 320:
+                    continue
+                clean_frame = noise_suppressor.process(frame)
                 vad_event = vad.process(clean_frame)
                 if vad_event == "speech_start":
+                    await websocket.send_bytes(clean_frame.tobytes())
                     print(" Speech started")
 
                 elif vad_event == "speech":
-                    print(" Speaking")
+                    await websocket.send_bytes(clean_frame.tobytes())
 
                 elif vad_event == "speech_end":
-                    print(" Speech ended")
+                    print(f"Speech ended after {vad.silence_frames} silent frames")
+
+                elif vad_event == "silence":
+                    pass
+
     except WebSocketDisconnect:
         print("WebSocket connection closed")

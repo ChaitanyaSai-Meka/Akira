@@ -1,39 +1,33 @@
 import numpy as np
-from scipy.signal import butter, lfilter
 
 class NoiseSuppressor:
-    def __init__(self, sample_rate=16000):
-        self.sample_rate = sample_rate
+    """
+    Simple spectral subtraction based noise suppressor
+    (NO speech decision here)
+    """
 
-        self.b, self.a = self._create_bandpass(300, 3400, sample_rate)
-        self.zi = np.zeros(max(len(self.a), len(self.b)) - 1)
+    def __init__(self, alpha=0.95):
+        self.alpha = alpha
+        self.noise_mag = None
 
-        self.noise_floor = 0.0
-        self.alpha = 0.95  
+    def process(self, frame):
+        frame = frame.astype(np.float32)
 
-        self.speech_ratio = 3.0
+        spectrum = np.fft.rfft(frame)
+        mag = np.abs(spectrum)
+        phase = np.angle(spectrum)
 
-    def _create_bandpass(self, lowcut, highcut, fs, order=5):
-        nyq = 0.5 * fs
-        return butter(order, [lowcut/nyq, highcut/nyq], btype="band")
+        if self.noise_mag is None:
+            self.noise_mag = mag
+            return frame.astype(np.int16)
 
-    def process(self, frame: np.ndarray) -> tuple[np.ndarray, bool]:
-        filtered, self.zi = lfilter(self.b, self.a, frame, zi=self.zi)
+        self.noise_mag = (
+            self.alpha * self.noise_mag +
+            (1 - self.alpha) * mag
+        )
 
-        rms = np.sqrt(np.mean(filtered ** 2))
+        clean_mag = np.maximum(mag - self.noise_mag, 0.0)
+        clean_spec = clean_mag * np.exp(1j * phase)
 
-        if self.noise_floor == 0:
-            self.noise_floor = rms
-
-        is_speech = rms > self.noise_floor * self.speech_ratio
-
-        if not is_speech:
-            self.noise_floor = (
-                self.alpha * self.noise_floor +
-                (1 - self.alpha) * rms
-            )
-
-        if not is_speech:
-            filtered[:] = 0
-
-        return filtered.astype(np.int16), is_speech
+        clean_frame = np.fft.irfft(clean_spec)
+        return clean_frame.astype(np.int16)
