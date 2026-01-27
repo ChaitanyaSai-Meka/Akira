@@ -9,4 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
+# Environment files
 .env
+.env.local
+
+# Temporary files
+*.log
+.DS_Store
+*.tmp
