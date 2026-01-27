@@ -4,6 +4,7 @@ from app.audio_buffer import AudioBuffer
 from app.noise_suppressor import NoiseSuppressor
 from app.vad import VAD
 from app.speech_transcriber import SpeechTranscriber
+from app.llm_processor import LLMProcessor
 import numpy as np
 import asyncio
 import json
@@ -34,6 +35,7 @@ async def websocket_endpoint(websocket: WebSocket):
         sample_rate=config.SAMPLE_RATE,
         stream_interval=config.TRANSCRIBER_STREAM_INTERVAL
     )
+    llm = LLMProcessor()
 
     try:
         while True:
@@ -84,6 +86,15 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "transcript",
                             "text": transcript
                         }))
+
+                        llm_response = llm.process(transcript)
+                        if llm_response:
+                            print(f"LLM: {llm_response}")
+                            await websocket.send_text(json.dumps({
+                                "type": "llm_response",
+                                "text": llm_response
+                            }))
+
                     await websocket.send_text(json.dumps({"type": "speech_end"}))
 
     except WebSocketDisconnect:
