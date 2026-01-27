@@ -20,12 +20,16 @@ class LLMProcessor:
                 model=self.model,
                 messages=[
                     {
+                        "role": "system",
+                        "content": "You are Akira, a concise assistant. Answer in 1-2 short sentences. Avoid filler, repetition, and disclaimers."
+                    },
+                    {
                         "role": "user",
                         "content": text
                     }
                 ],
-                temperature=0.7,
-                max_tokens=256,
+                temperature=0.3,
+                max_tokens=100,
             )
 
             response = message.choices[0].message.content
