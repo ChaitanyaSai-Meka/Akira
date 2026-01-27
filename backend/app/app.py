@@ -36,6 +36,7 @@ async def websocket_endpoint(websocket: WebSocket):
         stream_interval=config.TRANSCRIBER_STREAM_INTERVAL
     )
     llm = LLMProcessor()
+    last_live_transcript = None
 
     try:
         while True:
@@ -62,6 +63,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if vad_event == "speech_start":
                     transcriber.clear()
                     transcriber.add_frame(clean_frame)
+                    last_live_transcript = None
                     await websocket.send_text(json.dumps({"type": "speech_start"}))
                     print("Speech started")
 
@@ -71,6 +73,10 @@ async def websocket_endpoint(websocket: WebSocket):
                     if transcriber.should_transcribe():
                         transcript = transcriber.transcribe(clear_buffer=False)
                         if transcript:
+                            normalized = " ".join(transcript.split()).lower()
+                            if normalized == last_live_transcript:
+                                continue
+                            last_live_transcript = normalized
                             print(f"Live: {transcript}")
                             await websocket.send_text(json.dumps({
                                 "type": "live_transcript",
@@ -96,6 +102,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             }))
 
                     await websocket.send_text(json.dumps({"type": "speech_end"}))
+                    last_live_transcript = None
 
     except WebSocketDisconnect:
         print("WebSocket connection closed")
