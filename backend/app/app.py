@@ -84,8 +84,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "type": "transcript",
                             "text": transcript
                         }))
-                    else:
-                        await websocket.send_text(json.dumps({"type": "speech_end"}))
+                    await websocket.send_text(json.dumps({"type": "speech_end"}))
 
     except WebSocketDisconnect:
         print("WebSocket connection closed")

@@ -24,4 +24,6 @@ class NoiseSuppressor:
         clean_mag = np.maximum(mag - self.noise_mag, 0.0)
         clean_spec = clean_mag * np.exp(1j * phase)
         clean_frame = np.fft.irfft(clean_spec)
+        
+        clean_frame = np.clip(clean_frame, -32768, 32767)
         return clean_frame.astype(np.int16)

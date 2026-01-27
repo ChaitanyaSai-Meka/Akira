@@ -9,7 +9,7 @@ from typing import Optional
 
 
 class SpeechTranscriber:
-    def __init__(self, sample_rate: int = 16000, stream_interval: float = 2.0):
+    def __init__(self, sample_rate: int = 16000, stream_interval: float = 4.0):
         self.sample_rate = sample_rate
         self.stream_interval = stream_interval
         self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -17,12 +17,15 @@ class SpeechTranscriber:
         self.audio_buffer = np.array([], dtype=np.int16)
         self.last_transcribe_time = time.time()
         self.last_transcribed_length = 0
+        self.min_audio_duration = 0.5
 
     def add_frame(self, frame: np.ndarray) -> None:
         self.audio_buffer = np.concatenate([self.audio_buffer, frame.astype(np.int16)])
 
     def should_transcribe(self) -> bool:
-        return time.time() - self.last_transcribe_time >= self.stream_interval
+        current_duration = len(self.audio_buffer) / self.sample_rate
+        time_elapsed = time.time() - self.last_transcribe_time
+        return time_elapsed >= self.stream_interval and current_duration >= self.min_audio_duration
 
     def _create_wav_file(self, audio_data: np.ndarray) -> str:
         tmp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
@@ -41,11 +44,17 @@ class SpeechTranscriber:
         if len(self.audio_buffer) == 0:
             return None
 
+        current_duration = len(self.audio_buffer) / self.sample_rate
+        if current_duration < self.min_audio_duration:
+            return None
+
         if not clear_buffer:
             new_samples = len(self.audio_buffer) - self.last_transcribed_length
-            if new_samples < 16000:
+            new_duration = new_samples / self.sample_rate
+            if new_duration < self.min_audio_duration:
                 return None
 
+        tmp_path = None
         try:
             tmp_path = self._create_wav_file(self.audio_buffer)
 
@@ -56,8 +65,6 @@ class SpeechTranscriber:
                     temperature=0,
                     response_format="verbose_json",
                 )
-
-            os.unlink(tmp_path)
 
             self.last_transcribed_length = len(self.audio_buffer)
 
@@ -76,6 +83,12 @@ class SpeechTranscriber:
                 self.audio_buffer = np.array([], dtype=np.int16)
                 self.last_transcribed_length = 0
             return None
+        finally:
+            if tmp_path:
+                try:
+                    os.unlink(tmp_path)
+                except FileNotFoundError:
+                    pass
 
     def clear(self) -> None:
         self.audio_buffer = np.array([], dtype=np.int16)

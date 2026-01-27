@@ -46,11 +46,10 @@ class VAD:
         total_energy = np.sum(mag) + 1e-8
         return band_energy / total_energy
 
-    def _spectral_flatness(self, mag):
-        mag = mag + 1e-8
-        return np.exp(np.mean(np.log(mag))) / np.mean(mag)
-
     def process(self, frame: np.ndarray) -> str:
+        if len(frame) != self.frame_size:
+            raise ValueError(f"Expected frame size {self.frame_size}, got {len(frame)}")
+
         frame = frame.astype(np.float32)
         frame = self._pre_emphasis(frame)
 
@@ -61,7 +60,6 @@ class VAD:
         mag = np.abs(spectrum)
 
         band_ratio = self._band_energy_ratio(mag)
-        flatness = self._spectral_flatness(mag)
 
         if self.noise_rms == 0.0:
             self.noise_rms = rms * 0.5
