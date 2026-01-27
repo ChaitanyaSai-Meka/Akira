@@ -14,7 +14,7 @@ async def test_speech_to_text():
 
     async with websockets.connect(uri) as websocket:
         print("Connected to WebSocket. Listening for audio...")
-        print("Speak something and the text will be printed below:\n")
+        print("Speak something and the text will be processed:\n")
 
         sample_rate = 16000
         block_duration = 0.02
@@ -46,7 +46,9 @@ async def test_speech_to_text():
                     elif data["type"] == "live_transcript":
                         print(f"[Live] {data['text']}")
                     elif data["type"] == "transcript":
-                        print(f"\n[Final] {data['text']}\n")
+                        print(f"\n[Transcript] {data['text']}")
+                    elif data["type"] == "llm_response":
+                        print(f"[LLM Response] {data['text']}\n")
                     elif data["type"] == "speech_end":
                         print("[Speech ended]\n")
             except websockets.exceptions.ConnectionClosed:
