@@ -1,6 +1,9 @@
 import os
-from groq import Groq
+import logging
+from groq import Groq, APIError
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class LLMProcessor:
@@ -28,6 +31,6 @@ class LLMProcessor:
             response = message.choices[0].message.content
             return response if response.strip() else None
 
-        except Exception as e:
-            print(f"LLM error: {e}")
+        except APIError as e:
+            logger.error(f"Groq API error for model {self.model}: {e}", exc_info=True)
             return None

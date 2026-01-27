@@ -4,12 +4,12 @@ FastAPI WebSocket server for real-time speech recognition using Groq Whisper API
 
 ## Pipeline
 
-```
+```text
 Audio Input → Noise Suppression → VAD Detection → Transcription (Whisper)
-                                                          ↓
-                                                    LLM Processing (Llama)
-                                                          ↓
-                                                    WebSocket Response
+                                                        ↓
+                                                LLM Processing (Llama)
+                                                        ↓
+                                                WebSocket Response
 ```
 
 ## Setup
@@ -63,7 +63,7 @@ Speak into your microphone and see:
 - `{"type": "heartbeat"}` - Connection keep-alive
 
 **From Client:**
-- Binary PCM audio frames (16-bit, 16kHz, mono)
+- Binary PCM audio frames (16-bit, 16 kHz, mono)
 
 ## Models Used
 

@@ -87,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             "text": transcript
                         }))
 
-                        llm_response = llm.process(transcript)
+                        llm_response = await asyncio.to_thread(llm.process, transcript)
                         if llm_response:
                             print(f"LLM: {llm_response}")
                             await websocket.send_text(json.dumps({
