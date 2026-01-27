@@ -1,34 +1,18 @@
 import os
 import numpy as np
 import time
+import tempfile
+import wave
 from pathlib import Path
-from google.cloud import speech_v1
+from groq import Groq
 from typing import Optional
 
 
 class SpeechTranscriber:
-    def __init__(self, sample_rate: int = 16000, language_code: str = "en-US", stream_interval: float = 2.0):
+    def __init__(self, sample_rate: int = 16000, stream_interval: float = 2.0):
         self.sample_rate = sample_rate
-        self.language_code = language_code
         self.stream_interval = stream_interval
-        self.client = None
-        self.config = None
-
-        credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        if credentials_path:
-            abs_path = str(Path(credentials_path).resolve())
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = abs_path
-
-        try:
-            self.client = speech_v1.SpeechClient()
-            self.config = speech_v1.RecognitionConfig(
-                encoding=speech_v1.RecognitionConfig.AudioEncoding.LINEAR16,
-                sample_rate_hertz=sample_rate,
-                language_code=language_code,
-            )
-        except Exception as e:
-            print(f"Warning: Could not initialize Google Cloud Speech API: {e}")
-            print("Set GOOGLE_APPLICATION_CREDENTIALS environment variable with path to your credentials JSON")
+        self.client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
         self.audio_buffer = np.array([], dtype=np.int16)
         self.last_transcribe_time = time.time()
@@ -40,8 +24,21 @@ class SpeechTranscriber:
     def should_transcribe(self) -> bool:
         return time.time() - self.last_transcribe_time >= self.stream_interval
 
+    def _create_wav_file(self, audio_data: np.ndarray) -> str:
+        tmp_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp_path = tmp_file.name
+        tmp_file.close()
+
+        with wave.open(tmp_path, 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.sample_rate)
+            wav_file.writeframes(audio_data.astype(np.int16).tobytes())
+
+        return tmp_path
+
     def transcribe(self, clear_buffer: bool = True) -> Optional[str]:
-        if len(self.audio_buffer) == 0 or self.client is None:
+        if len(self.audio_buffer) == 0:
             return None
 
         if not clear_buffer:
@@ -50,10 +47,17 @@ class SpeechTranscriber:
                 return None
 
         try:
-            audio_bytes = self.audio_buffer.tobytes()
-            audio = speech_v1.RecognitionAudio(content=audio_bytes)
+            tmp_path = self._create_wav_file(self.audio_buffer)
 
-            response = self.client.recognize(config=self.config, audio=audio)
+            with open(tmp_path, "rb") as audio_file:
+                transcription = self.client.audio.transcriptions.create(
+                    file=(Path(tmp_path).name, audio_file.read()),
+                    model="whisper-large-v3",
+                    temperature=0,
+                    response_format="verbose_json",
+                )
+
+            os.unlink(tmp_path)
 
             self.last_transcribed_length = len(self.audio_buffer)
 
@@ -63,14 +67,9 @@ class SpeechTranscriber:
 
             self.last_transcribe_time = time.time()
 
-            if response.results:
-                transcript = " ".join(
-                    result.alternatives[0].transcript
-                    for result in response.results
-                )
-                return transcript if transcript.strip() else None
+            text = transcription.text if hasattr(transcription, 'text') else str(transcription)
+            return text if text.strip() else None
 
-            return None
         except Exception as e:
             print(f"Transcription error: {e}")
             if clear_buffer:

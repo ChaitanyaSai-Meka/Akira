@@ -5,7 +5,7 @@ load_dotenv()
 
 
 class Config:
-    GOOGLE_CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "./google_credentials.json")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     SAMPLE_RATE = 16000
     FRAME_SIZE = 320
     VAD_ENERGY_RATIO = 1.2
