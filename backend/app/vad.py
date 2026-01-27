@@ -1,44 +1,28 @@
 import numpy as np
 
+
 class VAD:
-    """
-    Non-ML Adaptive Voice Activity Detector
-
-    Features:
-    - Relative RMS energy
-    - Zero Crossing Rate (range-based)
-    - Speech-band energy ratio
-    - Spectral flatness
-    - Temporal smoothing + hysteresis
-    """
-
     def __init__(
         self,
         sample_rate: int = 16000,
         frame_size: int = 320,
-        energy_ratio: float = 2.0,      
-        min_speech_frames: int = 5,     
-        min_silence_frames: int = 40,   
+        energy_ratio: float = 1.2,
+        min_speech_frames: int = 2,
+        min_silence_frames: int = 30,
         alpha: float = 0.95
     ):
         self.sample_rate = sample_rate
         self.frame_size = frame_size
-
         self.energy_ratio = energy_ratio
         self.alpha = alpha
-
         self.min_speech_frames = min_speech_frames
         self.min_silence_frames = min_silence_frames
-
         self.noise_rms = 0.0
-
         self.speech_frames = 0
         self.silence_frames = 0
         self.in_speech = False
-
         self.pre_emphasis = 0.97
         self.prev_sample = 0.0
-
         self.freqs = np.fft.rfftfreq(frame_size, 1 / sample_rate)
         self.speech_band = np.where(
             (self.freqs >= 300) & (self.freqs <= 3400)
@@ -84,31 +68,16 @@ class VAD:
             return "silence"
 
         energy_ok = rms > self.noise_rms * self.energy_ratio
-
-        continue_energy_ok = rms > self.noise_rms * 0.9
-
-        zcr_ok = zcr > 0.01
-        band_ok = band_ratio > 0.35
-        flatness_ok = flatness < 0.75
-
-        print(
-            f"rms={rms:.5f} noise={self.noise_rms:.5f} "
-            f"ratio={rms/self.noise_rms:.2f} "
-            f"zcr={zcr:.3f} "
-            f"band={band_ratio:.2f} "
-            f"flat={flatness:.2f}"
-        )
+        continue_energy_ok = rms > self.noise_rms * 0.85
+        zcr_ok = zcr > 0.008
+        band_ok = band_ratio > 0.30
 
         start_speech = (
             energy_ok and
-            band_ok and
-            (flatness_ok or zcr_ok)
+            (band_ok or zcr_ok)
         )
 
-        continue_speech = (
-            continue_energy_ok and
-            band_ok
-        )
+        continue_speech = continue_energy_ok
 
         if not self.in_speech and rms < self.noise_rms * 1.2:
             self.noise_rms = (

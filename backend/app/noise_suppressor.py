@@ -1,18 +1,13 @@
 import numpy as np
 
-class NoiseSuppressor:
-    """
-    Simple spectral subtraction based noise suppressor
-    (NO speech decision here)
-    """
 
+class NoiseSuppressor:
     def __init__(self, alpha=0.95):
         self.alpha = alpha
         self.noise_mag = None
 
     def process(self, frame):
         frame = frame.astype(np.float32)
-
         spectrum = np.fft.rfft(frame)
         mag = np.abs(spectrum)
         phase = np.angle(spectrum)
@@ -28,6 +23,5 @@ class NoiseSuppressor:
 
         clean_mag = np.maximum(mag - self.noise_mag, 0.0)
         clean_spec = clean_mag * np.exp(1j * phase)
-
         clean_frame = np.fft.irfft(clean_spec)
         return clean_frame.astype(np.int16)
