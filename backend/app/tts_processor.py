@@ -30,14 +30,22 @@ class TTSProcessor:
             return None
 
         try:
+            logger.info(f"Generating TTS for text: {text[:50]}...")
+            
             response = self.client.audio.speech.create(
                 model=self.model,
                 input=text,
-                voice="alloy",
-                response_format="wav"
+                voice="autumn"
             )
             
-            audio_data = response.read()
+            if hasattr(response, 'content'):
+                audio_data = response.content
+            elif hasattr(response, 'read'):
+                audio_data = response.read()
+            else:
+                audio_data = bytes(response)
+            
+            logger.info(f"Received TTS audio data: {len(audio_data)} bytes")
             
             audio_buffer = io.BytesIO()
             with wave.open(io.BytesIO(audio_data), 'rb') as wav_in:
@@ -60,8 +68,12 @@ class TTSProcessor:
                 wav_out.setframerate(sample_rate)
                 wav_out.writeframes(audio_array.tobytes())
             
+            logger.info("TTS audio converted successfully")
             return audio_buffer.getvalue()
 
+        except AttributeError as e:
+            logger.error(f"Groq TTS API not available: {e}. This feature may not be supported yet.")
+            return None
         except Exception as e:
             logger.error(f"Groq TTS conversion error: {e}", exc_info=True)
             return None

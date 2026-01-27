@@ -66,7 +66,7 @@ class VAD:
             return "silence"
 
         energy_ok = rms > self.noise_rms * self.energy_ratio
-        continue_energy_ok = rms > self.noise_rms * 0.85
+        continue_energy_ok = rms > self.noise_rms * 1.1
         zcr_ok = zcr > 0.008
         band_ok = band_ratio > 0.30
 
@@ -75,7 +75,7 @@ class VAD:
             (band_ok or zcr_ok)
         )
 
-        continue_speech = continue_energy_ok
+        continue_speech = continue_energy_ok and (band_ok or zcr_ok)
 
         if not self.in_speech and rms < self.noise_rms * 1.2:
             self.noise_rms = (
