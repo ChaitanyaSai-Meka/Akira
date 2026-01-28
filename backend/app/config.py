@@ -6,6 +6,7 @@ load_dotenv()
 
 class Config:
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+    TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
     SAMPLE_RATE = 16000
     FRAME_SIZE = 320
     VAD_AGGRESSIVENESS = 2
