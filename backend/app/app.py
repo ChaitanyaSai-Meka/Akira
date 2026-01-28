@@ -60,7 +60,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 
                 if data.get("type") == "websocket.receive":
                     if "text" in data:
-                        message = json.loads(data["text"])
+                        try:
+                            message = json.loads(data["text"])
+                        except (json.JSONDecodeError, ValueError) as e:
+                            logger.warning(f"Malformed JSON payload: {data['text'][:100]}, error: {e}")
+                            continue
                         
                         if message.get("type") == "tts_finished":
                             is_ai_speaking = False
@@ -118,18 +122,28 @@ async def websocket_endpoint(websocket: WebSocket):
                                     if llm_response:
                                         logger.info(f"LLM: {llm_response}")
                                         
-                                        is_ai_speaking = True
-                                        
                                         await websocket.send_text(json.dumps({
                                             "type": "llm_response",
                                             "text": llm_response
                                         }))
                                         
                                         if tts.is_available():
-                                            audio_data = await asyncio.to_thread(tts.text_to_audio, llm_response)
-                                            if audio_data:
-                                                await websocket.send_bytes(audio_data)
-                                                logger.info("Sent TTS audio to client")
+                                            is_ai_speaking = True
+                                            try:
+                                                audio_data = await asyncio.to_thread(tts.text_to_audio, llm_response)
+                                                if audio_data:
+                                                    await websocket.send_bytes(audio_data)
+                                                    logger.info("Sent TTS audio to client")
+                                                else:
+                                                    logger.warning("TTS returned no audio data")
+                                                    is_ai_speaking = False
+                                                    await websocket.send_text(json.dumps({"type": "tts_finished"}))
+                                            except Exception as e:
+                                                logger.error(f"TTS error: {e}", exc_info=True)
+                                                is_ai_speaking = False
+                                                await websocket.send_text(json.dumps({"type": "tts_finished"}))
+                                        else:
+                                            await websocket.send_text(json.dumps({"type": "tts_finished"}))
 
                                 await websocket.send_text(json.dumps({"type": "speech_end"}))
                                 last_live_transcript = None

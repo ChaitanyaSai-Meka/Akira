@@ -1,7 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 
-const BACKEND_URL = 'ws://localhost:8002/ws';
+const getBackendURL = () => {
+  if (import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL;
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.hostname;
+  const port = import.meta.env.VITE_BACKEND_PORT || '8002';
+  return `${protocol}//${host}:${port}/ws`;
+};
+
+const BACKEND_URL = getBackendURL();
 const SAMPLE_RATE = 16000;
 
 function App() {
@@ -17,104 +27,24 @@ function App() {
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
   const streamRef = useRef(null);
+  const isSpeakingRef = useRef(false);
 
   useEffect(() => {
-    connectWebSocket();
-    startListening();
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
 
-    return () => {
-      cleanup();
-      if (wsRef.current) wsRef.current.close();
-    };
-  }, []);
-
-  const connectWebSocket = () => {
-    const ws = new WebSocket(BACKEND_URL);
-
-    ws.onopen = () => {
-      setIsConnected(true);
-      setStatus('Listening...');
-    };
-
-    ws.onmessage = async (event) => {
-      if (typeof event.data === 'string') {
-        const data = JSON.parse(event.data);
-        handleMessage(data);
-      } else if (event.data instanceof Blob) {
-        const arrayBuffer = await event.data.arrayBuffer();
-        playAudio(arrayBuffer);
-      }
-    };
-
-    ws.onerror = () => setStatus('Connection Error');
-    ws.onclose = () => {
-      setIsConnected(false);
-      setStatus('Disconnected');
-    };
-
-    wsRef.current = ws;
-  };
-
-  const handleMessage = (data) => {
-    switch (data.type) {
-      case 'speech_start':
-        setStatus('Listening...');
-        setLiveTranscript('');
-        setTranscript('');
-        setLlmResponse('');
-        break;
-
-      case 'live_transcript':
-        setLiveTranscript(data.text);
-        break;
-
-      case 'transcript':
-        setTranscript(data.text);
-        setLiveTranscript('');
-        setStatus('Thinking...');
-        break;
-
-      case 'llm_response':
-        setLlmResponse(data.text);
-        setIsSpeaking(true);
-        setStatus('Speaking...');
-        break;
-
-      case 'speech_end':
-        if (!isSpeaking) setStatus('Listening...');
-        break;
+  const cleanup = () => {
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
     }
-  };
-
-  const playAudio = async (arrayBuffer) => {
-    try {
-      const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
-      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-
-      source.onended = () => {
-        setIsSpeaking(false);
-        setStatus('Listening...');
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
-        }
-
-        audioContext.close();
-      };
-
-      source.start(0);
-    } catch (error) {
-      console.error('Audio playback error:', error);
-      setIsSpeaking(false);
-      setStatus('Listening...');
-
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
-      }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     }
   };
 
@@ -160,20 +90,109 @@ function App() {
     }
   };
 
-  const cleanup = () => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
+  const connectWebSocket = () => {
+    const ws = new WebSocket(BACKEND_URL);
+
+    ws.onopen = () => {
+      setIsConnected(true);
+      setStatus('Listening...');
+      startListening();
+    };
+
+    ws.onmessage = async (event) => {
+      if (typeof event.data === 'string') {
+        try {
+          const data = JSON.parse(event.data);
+          handleMessage(data);
+        } catch (error) {
+          console.error('JSON parse error:', error, 'Raw data:', event.data);
+        }
+      } else if (event.data instanceof Blob) {
+        const arrayBuffer = await event.data.arrayBuffer();
+        playAudio(arrayBuffer);
+      }
+    };
+
+    ws.onerror = () => setStatus('Connection Error');
+    ws.onclose = () => {
+      setIsConnected(false);
+      setStatus('Disconnected');
+    };
+
+    wsRef.current = ws;
+  };
+
+  const handleMessage = (data) => {
+    switch (data.type) {
+      case 'speech_start':
+        setStatus('Listening...');
+        setLiveTranscript('');
+        setTranscript('');
+        setLlmResponse('');
+        break;
+
+      case 'live_transcript':
+        setLiveTranscript(data.text);
+        break;
+
+      case 'transcript':
+        setTranscript(data.text);
+        setLiveTranscript('');
+        setStatus('Thinking...');
+        break;
+
+      case 'llm_response':
+        setLlmResponse(data.text);
+        setIsSpeaking(true);
+        setStatus('Speaking...');
+        break;
+
+      case 'speech_end':
+        if (!isSpeakingRef.current) setStatus('Listening...');
+        break;
     }
   };
+
+  const playAudio = async (arrayBuffer) => {
+    try {
+      const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+
+      source.onended = () => {
+        setIsSpeaking(false);
+        setStatus('Listening...');
+
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
+        }
+
+        audioContext.close();
+      };
+
+      source.start(0);
+    } catch (error) {
+      console.error('Audio playback error:', error);
+      setIsSpeaking(false);
+      setStatus('Listening...');
+
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
+      }
+    }
+  };
+
+  useEffect(() => {
+    connectWebSocket();
+
+    return () => {
+      cleanup();
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
 
   return (
     <div className="app">
