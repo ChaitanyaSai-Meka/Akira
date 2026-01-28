@@ -66,6 +66,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             logger.warning(f"Malformed JSON payload: {data['text'][:100]}, error: {e}")
                             continue
                         
+                        if not isinstance(message, dict):
+                            logger.warning(f"Parsed message is not a dict: {type(message).__name__}, value: {str(message)[:100]}")
+                            continue
+                        
                         if message.get("type") == "tts_finished":
                             is_ai_speaking = False
                             logger.info("AI finished speaking")
