@@ -11,7 +11,9 @@ dependencies = [
     "groq>=0.4.1",
     "numpy>=2.4.1",
     "scipy>=1.17.0",
+
     "sounddevice>=0.5.5",
     "uvicorn[standard]>=0.40.0",
+    "webrtcvad-wheels>=2.0.14",
     "websockets>=14.0",
 ]

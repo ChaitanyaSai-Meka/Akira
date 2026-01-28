@@ -2,7 +2,7 @@ import numpy as np
 
 
 class NoiseSuppressor:
-    def __init__(self, alpha=0.95):
+    def __init__(self, alpha=0.98):
         self.alpha = alpha
         self.noise_mag = None
 
@@ -21,7 +21,7 @@ class NoiseSuppressor:
             (1 - self.alpha) * mag
         )
 
-        clean_mag = np.maximum(mag - self.noise_mag, 0.0)
+        clean_mag = np.maximum(mag - 0.8 * self.noise_mag, 0.0)
         clean_spec = clean_mag * np.exp(1j * phase)
         clean_frame = np.fft.irfft(clean_spec)
         

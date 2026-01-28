@@ -21,7 +21,7 @@ class LLMProcessor:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are Akira, a concise assistant. Answer in 1-2 short sentences. Avoid filler, repetition, and disclaimers."
+                        "content": "You are Akira, a voice assistant. Answer in 1-2 short sentences. Avoid filler, repetition, and disclaimers."
                     },
                     {
                         "role": "user",

@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import ssl
 from typing import Optional
 from deepgram import DeepgramClient
 import httpx
@@ -24,7 +25,7 @@ class TTSProcessor:
         else:
             logger.warning("No Deepgram API key found, TTS disabled")
 
-    def text_to_audio(self, text: str, max_retries: int = 3) -> Optional[bytes]:
+    def text_to_audio(self, text: str, max_retries: int = 2) -> Optional[bytes]:
         if not self.client or not text or not text.strip():
             return None
 
@@ -33,17 +34,22 @@ class TTSProcessor:
                 logger.debug(f"Generating TTS for text: {text[:50]}...")
                 logger.info(f"Generating TTS (text_length={len(text)}, attempt={attempt + 1}/{max_retries})")
                 
-                response = self.client.speak.v1.audio.generate(
-                    text=text,
-                    model=self.model,
-                    encoding="linear16",
-                    sample_rate=16000,
-                )
+                options = {
+                    "model": self.model,
+                    "encoding": "linear16",
+                    "sample_rate": 16000,
+                }
+                
+                response = self.client.speak.v1.audio.generate(text=text, **options)
                 
                 if isinstance(response, httpx.Response):
                     audio_data = response.content
                 else:
-                    audio_data = b"".join(response)
+                    try:
+                        audio_data = b"".join(response)
+                    except Exception as e:
+                        logger.exception(f"Failed to join audio response from successful API call: {e}")
+                        return None
                 
                 if audio_data and len(audio_data) > 0:
                     logger.info(f"Received Deepgram TTS audio: {len(audio_data)} bytes")
@@ -51,7 +57,10 @@ class TTSProcessor:
                 else:
                     logger.warning("TTS returned empty audio data")
                     
-            except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
+            except (httpx.RemoteProtocolError, ssl.SSLError) as e:
+                logger.error(f"Deepgram API connection error (check API key/quota or network): {e}")
+                return None
+            except (httpx.ConnectError, httpx.TimeoutException, ConnectionError, OSError) as e:
                 logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {e}")
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 0.5
@@ -61,11 +70,10 @@ class TTSProcessor:
                     logger.error(f"All {max_retries} attempts failed due to network errors")
                     return None
             except Exception as e:
-                logger.error(f"Deepgram TTS error: {e}", exc_info=True)
+                logger.error(f"Deepgram TTS error: {e}")
                 return None
         
         return None
 
     def is_available(self) -> bool:
         return self.client is not None
-

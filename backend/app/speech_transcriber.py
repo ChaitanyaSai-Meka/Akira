@@ -6,6 +6,7 @@ import wave
 from pathlib import Path
 from groq import Groq
 from typing import Optional
+from app.config import get_config
 
 
 class SpeechTranscriber:
@@ -17,7 +18,8 @@ class SpeechTranscriber:
         self.audio_buffer = np.array([], dtype=np.int16)
         self.last_transcribe_time = time.time()
         self.last_transcribed_length = 0
-        self.min_audio_duration = 0.5
+        config = get_config()
+        self.min_audio_duration = config.TRANSCRIBER_MIN_AUDIO_DURATION
 
     def add_frame(self, frame: np.ndarray) -> None:
         self.audio_buffer = np.concatenate([self.audio_buffer, frame.astype(np.int16)])
@@ -61,8 +63,10 @@ class SpeechTranscriber:
             with open(tmp_path, "rb") as audio_file:
                 transcription = self.client.audio.transcriptions.create(
                     file=(Path(tmp_path).name, audio_file.read()),
-                    model="whisper-large-v3",
-                    temperature=0,
+                    model="whisper-large-v3-turbo",
+                    temperature=0.0,
+                    language="en",
+                    prompt="Transcribe the following English speech accurately.",
                     response_format="verbose_json",
                 )
 

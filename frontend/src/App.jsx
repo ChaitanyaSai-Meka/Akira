@@ -5,9 +5,11 @@ const getBackendURL = () => {
   if (import.meta.env.VITE_BACKEND_URL) {
     return import.meta.env.VITE_BACKEND_URL;
   }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.hostname;
-  const port = import.meta.env.VITE_BACKEND_PORT || '8002';
+  const port = import.meta.env.VITE_BACKEND_PORT || '8080';
+
   return `${protocol}//${host}:${port}/ws`;
 };
 
@@ -55,7 +57,7 @@ function App() {
           sampleRate: SAMPLE_RATE,
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true
         }
       });
