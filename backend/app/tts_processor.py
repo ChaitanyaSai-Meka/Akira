@@ -39,7 +39,7 @@ class TTSProcessor:
                     "sample_rate": 16000,
                 }
                 
-                response = self.client.speak.v1.audio.generate(text, options)
+                response = self.client.speak.v1.audio.generate(text=text, **options)
                 
                 if isinstance(response, httpx.Response):
                     audio_data = response.content

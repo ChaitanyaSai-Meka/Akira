@@ -49,7 +49,7 @@ async def websocket_endpoint(websocket: WebSocket):
     audio_buffer = AudioBuffer(frame_size=config.FRAME_SIZE)
     noise_suppressor = NoiseSuppressor()
     vad = VAD(
-        energy_ratio=config.VAD_ENERGY_RATIO,
+        aggressiveness=config.VAD_AGGRESSIVENESS,
         min_speech_frames=config.VAD_MIN_SPEECH_FRAMES,
         min_silence_frames=config.VAD_MIN_SILENCE_FRAMES,
     )

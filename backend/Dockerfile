@@ -6,7 +6,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-FROM python:3.12.8-slim-bookworm@sha256:5dc6f84b5e85d1ef2c5e2f6f7f4e3d1f8e9f7f6f5f4f3f2f1f0f9f8f7f6f5f4
+FROM python:3.12.8-slim-bookworm@sha256:2199a62885a12290dc9c5be3ca0681d367576ab7bf037da120e564723292a2f0
 
 RUN apt-get update && apt-get install -y \
     libportaudio2 \
