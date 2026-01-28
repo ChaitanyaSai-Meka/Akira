@@ -48,8 +48,8 @@ class TTSProcessor:
                     try:
                         audio_data = b"".join(response)
                     except Exception as e:
-                        logger.error(f"Failed to join audio response: {e}")
-                        audio_data = None
+                        logger.exception(f"Failed to join audio response from successful API call: {e}")
+                        return None
                 
                 if audio_data and len(audio_data) > 0:
                     logger.info(f"Received Deepgram TTS audio: {len(audio_data)} bytes")
