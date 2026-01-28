@@ -25,7 +25,7 @@ class TTSProcessor:
         else:
             logger.warning("No Deepgram API key found, TTS disabled")
 
-    def text_to_audio(self, text: str, max_retries: int = 2) -> Optional[bytes]:
+    def text_to_audio(self, text: str, max_retries: int = 3) -> Optional[bytes]:
         if not self.client or not text or not text.strip():
             return None
 
@@ -45,11 +45,7 @@ class TTSProcessor:
                 if isinstance(response, httpx.Response):
                     audio_data = response.content
                 else:
-                    try:
-                        audio_data = b"".join(response)
-                    except Exception as e:
-                        logger.exception(f"Failed to join audio response from successful API call: {e}")
-                        return None
+                    audio_data = b"".join(response)
                 
                 if audio_data and len(audio_data) > 0:
                     logger.info(f"Received Deepgram TTS audio: {len(audio_data)} bytes")
@@ -63,14 +59,14 @@ class TTSProcessor:
             except (httpx.ConnectError, httpx.TimeoutException, ConnectionError, OSError) as e:
                 logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {e}")
                 if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 0.5
+                    wait_time = (attempt + 1) * 1.0 
                     logger.info(f"Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                 else:
                     logger.error(f"All {max_retries} attempts failed due to network errors")
                     return None
             except Exception as e:
-                logger.error(f"Deepgram TTS error: {e}")
+                logger.exception(f"Deepgram TTS error: {e}")
                 return None
         
         return None
