@@ -5,6 +5,7 @@ from app.noise_suppressor import NoiseSuppressor
 from app.vad import VAD
 from app.speech_transcriber import SpeechTranscriber
 from app.llm_processor import LLMProcessor
+from app.tts_processor import TTSProcessor
 from dotenv import load_dotenv
 import numpy as np
 import asyncio
@@ -41,6 +42,7 @@ async def websocket_endpoint(websocket: WebSocket):
         stream_interval=config.TRANSCRIBER_STREAM_INTERVAL
     )
     llm = LLMProcessor()
+    tts = TTSProcessor()
     
     is_ai_speaking = False
     last_live_transcript = None
@@ -52,6 +54,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     websocket.receive(),
                     timeout=config.WEBSOCKET_TIMEOUT
                 )
+                
+                if data.get("type") == "websocket.disconnect":
+                    break
                 
                 if data.get("type") == "websocket.receive":
                     if "text" in data:
@@ -119,6 +124,12 @@ async def websocket_endpoint(websocket: WebSocket):
                                             "type": "llm_response",
                                             "text": llm_response
                                         }))
+                                        
+                                        if tts.is_available():
+                                            audio_data = await asyncio.to_thread(tts.text_to_audio, llm_response)
+                                            if audio_data:
+                                                await websocket.send_bytes(audio_data)
+                                                logger.info("Sent TTS audio to client")
 
                                 await websocket.send_text(json.dumps({"type": "speech_end"}))
                                 last_live_transcript = None

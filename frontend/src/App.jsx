@@ -25,7 +25,6 @@ function App() {
     return () => {
       cleanup();
       if (wsRef.current) wsRef.current.close();
-      window.speechSynthesis.cancel();
     };
   }, []);
 
@@ -37,9 +36,14 @@ function App() {
       setStatus('Listening...');
     };
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      handleMessage(data);
+    ws.onmessage = async (event) => {
+      if (typeof event.data === 'string') {
+        const data = JSON.parse(event.data);
+        handleMessage(data);
+      } else if (event.data instanceof Blob) {
+        const arrayBuffer = await event.data.arrayBuffer();
+        playAudio(arrayBuffer);
+      }
     };
 
     ws.onerror = () => setStatus('Connection Error');
@@ -72,7 +76,8 @@ function App() {
 
       case 'llm_response':
         setLlmResponse(data.text);
-        speakText(data.text);
+        setIsSpeaking(true);
+        setStatus('Speaking...');
         break;
 
       case 'speech_end':
@@ -81,37 +86,36 @@ function App() {
     }
   };
 
-  const speakText = (text) => {
-    if (!text || !window.speechSynthesis) return;
+  const playAudio = async (arrayBuffer) => {
+    try {
+      const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-    setIsSpeaking(true);
-    setStatus('Speaking...');
-    window.speechSynthesis.cancel();
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.volume = 1.0;
+      source.onended = () => {
+        setIsSpeaking(false);
+        setStatus('Listening...');
 
-    utterance.onend = () => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
+        }
+
+        audioContext.close();
+      };
+
+      source.start(0);
+    } catch (error) {
+      console.error('Audio playback error:', error);
       setIsSpeaking(false);
       setStatus('Listening...');
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
       }
-    };
-
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setStatus('Listening...');
-
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'tts_finished' }));
-      }
-    };
-
-    window.speechSynthesis.speak(utterance);
+    }
   };
 
   const startListening = async () => {
