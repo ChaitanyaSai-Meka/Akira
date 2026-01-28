@@ -1,6 +1,7 @@
 import os
 import logging
 import time
+import ssl
 from typing import Optional
 from deepgram import DeepgramClient
 import httpx
@@ -56,8 +57,8 @@ class TTSProcessor:
                 else:
                     logger.warning("TTS returned empty audio data")
                     
-            except httpx.RemoteProtocolError as e:
-                logger.error(f"Deepgram API error (possibly invalid API key or quota exceeded): {e}")
+            except (httpx.RemoteProtocolError, ssl.SSLError, ConnectionResetError, OSError) as e:
+                logger.error(f"Deepgram API connection error (check API key/quota or network): {e}")
                 return None
             except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
                 logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {e}")

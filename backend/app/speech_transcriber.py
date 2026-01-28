@@ -63,8 +63,10 @@ class SpeechTranscriber:
             with open(tmp_path, "rb") as audio_file:
                 transcription = self.client.audio.transcriptions.create(
                     file=(Path(tmp_path).name, audio_file.read()),
-                    model="whisper-large-v3",
-                    temperature=0,
+                    model="whisper-large-v3-turbo",
+                    temperature=0.0,
+                    language="en",
+                    prompt="Transcribe the following English speech accurately.",
                     response_format="verbose_json",
                 )
 

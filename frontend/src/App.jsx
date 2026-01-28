@@ -57,7 +57,7 @@ function App() {
           sampleRate: SAMPLE_RATE,
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true
         }
       });

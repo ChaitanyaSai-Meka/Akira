@@ -12,6 +12,18 @@ class VAD:
         min_speech_frames: int = 8,
         min_silence_frames: int = 30,
     ):
+        if sample_rate not in {8000, 16000, 32000, 48000}:
+            raise ValueError(
+                f"sample_rate must be one of 8000, 16000, 32000, or 48000 Hz, got {sample_rate}"
+            )
+        
+        frame_duration_ms = (frame_size / sample_rate) * 1000
+        if frame_duration_ms not in {10, 20, 30}:
+            raise ValueError(
+                f"frame_duration_ms must be 10, 20, or 30 ms, got {frame_duration_ms:.1f}ms "
+                f"(frame_size={frame_size}, sample_rate={sample_rate})"
+            )
+        
         self.sample_rate = sample_rate
         self.frame_size = frame_size
         self.min_speech_frames = min_speech_frames
@@ -40,8 +52,8 @@ class VAD:
             self.noise_floor_initialized = True
             return "silence"
         
-        if not self.in_speech and energy < self.noise_floor * 1.5:
-            self.noise_floor = 0.95 * self.noise_floor + 0.05 * energy
+        if not self.in_speech and energy < self.noise_floor * 2.0:
+            self.noise_floor = 0.98 * self.noise_floor + 0.02 * energy
 
         frame_bytes = struct.pack(f'{len(frame)}h', *frame.astype(np.int16))
         
@@ -50,7 +62,7 @@ class VAD:
         except Exception:
             return "silence"
         
-        has_energy = energy > max(self.energy_threshold, self.noise_floor * 2.0)
+        has_energy = energy > max(self.energy_threshold, self.noise_floor * 2.2)
         
         speech_detected = is_speech and has_energy
         
