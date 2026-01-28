@@ -57,10 +57,10 @@ class TTSProcessor:
                 else:
                     logger.warning("TTS returned empty audio data")
                     
-            except (httpx.RemoteProtocolError, ssl.SSLError, ConnectionResetError, OSError) as e:
+            except (httpx.RemoteProtocolError, ssl.SSLError) as e:
                 logger.error(f"Deepgram API connection error (check API key/quota or network): {e}")
                 return None
-            except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
+            except (httpx.ConnectError, httpx.TimeoutException, ConnectionError, OSError) as e:
                 logger.warning(f"Network error on attempt {attempt + 1}/{max_retries}: {e}")
                 if attempt < max_retries - 1:
                     wait_time = (attempt + 1) * 0.5
