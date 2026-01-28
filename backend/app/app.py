@@ -25,6 +25,22 @@ async def health_check():
     return {"status": "ok"}
 
 
+async def safe_send_text(websocket: WebSocket, message: dict) -> bool:
+    try:
+        await websocket.send_text(json.dumps(message))
+        return True
+    except (WebSocketDisconnect, RuntimeError) as e:
+        logger.debug(f"Cannot send text, client disconnected: {e}")
+        return False
+
+async def safe_send_bytes(websocket: WebSocket, data: bytes) -> bool:
+    try:
+        await websocket.send_bytes(data)
+        return True
+    except (WebSocketDisconnect, RuntimeError) as e:
+        logger.debug(f"Cannot send bytes, client disconnected: {e}")
+        return False
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -94,7 +110,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 transcriber.clear()
                                 transcriber.add_frame(clean_frame)
                                 last_live_transcript = None
-                                await websocket.send_text(json.dumps({"type": "speech_start"}))
+                                await safe_send_text(websocket, {"type": "speech_start"})
                                 logger.info("Speech started")
 
                             elif vad_event == "speech":
@@ -106,54 +122,66 @@ async def websocket_endpoint(websocket: WebSocket):
                                         normalized = " ".join(transcript.split()).lower()
                                         if normalized != last_live_transcript:
                                             last_live_transcript = normalized
-                                            logger.info(f"Live: {transcript}")
-                                            await websocket.send_text(json.dumps({
+                                            logger.debug(f"Live: {transcript}")
+                                            logger.info(f"Live transcript received (length: {len(transcript)})")
+                                            await safe_send_text(websocket, {
                                                 "type": "live_transcript",
                                                 "text": transcript
-                                            }))
+                                            })
 
                             elif vad_event == "speech_end":
                                 logger.info("Speech ended")
                                 transcript = transcriber.transcribe(clear_buffer=True)
                                 if transcript:
-                                    logger.info(f"Final: {transcript}")
-                                    await websocket.send_text(json.dumps({
+                                    logger.debug(f"Final: {transcript}")
+                                    logger.info(f"Final transcript received (length: {len(transcript)})")
+                                    if not await safe_send_text(websocket, {
                                         "type": "transcript",
                                         "text": transcript
-                                    }))
+                                    }):
+                                        break
 
                                     llm_response = await asyncio.to_thread(llm.process, transcript)
                                     if llm_response:
-                                        logger.info(f"LLM: {llm_response}")
+                                        logger.debug(f"LLM: {llm_response}")
+                                        logger.info(f"LLM response generated (length: {len(llm_response)})")
                                         
-                                        await websocket.send_text(json.dumps({
+                                        if not await safe_send_text(websocket, {
                                             "type": "llm_response",
                                             "text": llm_response
-                                        }))
+                                        }):
+                                            break
                                         
                                         if tts.is_available():
                                             is_ai_speaking = True
                                             try:
                                                 audio_data = await asyncio.to_thread(tts.text_to_audio, llm_response)
                                                 if audio_data:
-                                                    await websocket.send_bytes(audio_data)
-                                                    logger.info("Sent TTS audio to client")
+                                                    if await safe_send_bytes(websocket, audio_data):
+                                                        logger.info("Sent TTS audio to client")
+                                                    else:
+                                                        is_ai_speaking = False
+                                                        break
                                                 else:
                                                     logger.warning("TTS returned no audio data")
                                                     is_ai_speaking = False
-                                                    await websocket.send_text(json.dumps({"type": "tts_finished"}))
+                                                    await safe_send_text(websocket, {"type": "tts_finished"})
+                                            except WebSocketDisconnect:
+                                                logger.info("Client disconnected during TTS")
+                                                is_ai_speaking = False
+                                                break
                                             except Exception as e:
                                                 logger.error(f"TTS error: {e}", exc_info=True)
                                                 is_ai_speaking = False
-                                                await websocket.send_text(json.dumps({"type": "tts_finished"}))
+                                                await safe_send_text(websocket, {"type": "tts_finished"})
                                         else:
-                                            await websocket.send_text(json.dumps({"type": "tts_finished"}))
+                                            await safe_send_text(websocket, {"type": "tts_finished"})
 
-                                await websocket.send_text(json.dumps({"type": "speech_end"}))
+                                await safe_send_text(websocket, {"type": "speech_end"})
                                 last_live_transcript = None
                     
             except asyncio.TimeoutError:
-                await websocket.send_text(json.dumps({"type": "heartbeat"}))
+                await safe_send_text(websocket, {"type": "heartbeat"})
                 continue
 
     except WebSocketDisconnect:

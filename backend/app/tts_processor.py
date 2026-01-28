@@ -30,7 +30,8 @@ class TTSProcessor:
 
         for attempt in range(max_retries):
             try:
-                logger.info(f"Generating TTS for text: {text[:50]}... (attempt {attempt + 1}/{max_retries})")
+                logger.debug(f"Generating TTS for text: {text[:50]}...")
+                logger.info(f"Generating TTS (text_length={len(text)}, attempt={attempt + 1}/{max_retries})")
                 
                 response = self.client.speak.v1.audio.generate(
                     text=text,
