@@ -20,6 +20,10 @@ class TavilySearch:
             logger.error("Tavily client not initialized. Missing API key.")
             return None
 
+        if not query or not query.strip():
+            logger.warning("Tavily search called with blank or whitespace-only query")
+            return None
+
         try:
             response = self.client.search(
                 query=query,

@@ -1,11 +1,14 @@
 import os
 import logging
 import json
+import hashlib
 from groq import Groq, APIError
 from typing import Optional
 from .tavily_search import TavilySearch
 
 logger = logging.getLogger(__name__)
+
+MAX_QUERY_LENGTH = 500
 
 
 class LLMProcessor:
@@ -67,19 +70,57 @@ class LLMProcessor:
                 
                 for tool_call in tool_calls:
                     function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
                     
                     if function_name == "tavily_search":
-                        search_query = function_args.get("query")
-                        logger.info(f"Performing Tavily search for: {search_query}")
-                        search_results = self.tavily.search(search_query)
-                        
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "name": function_name,
-                            "content": search_results or "No results found"
-                        })
+                        try:
+                            if isinstance(tool_call.function.arguments, dict):
+                                function_args = tool_call.function.arguments
+                            else:
+                                function_args = json.loads(tool_call.function.arguments)
+                            
+                            search_query = function_args.get("query")
+                            
+                            if not search_query or not isinstance(search_query, str):
+                                logger.warning("Tool call validation failed: missing or invalid query")
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "name": function_name,
+                                    "content": "Invalid search query"
+                                })
+                                continue
+                            
+                            if len(search_query) > MAX_QUERY_LENGTH:
+                                logger.warning(f"Tool call validation failed: query exceeds max length ({len(search_query)} > {MAX_QUERY_LENGTH})")
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "name": function_name,
+                                    "content": "Search query too long"
+                                })
+                                continue
+                            
+                            query_hash = hashlib.sha256(search_query.encode()).hexdigest()[:8]
+                            logger.info(f"Tavily search invoked (query_length={len(search_query)}, query_hash={query_hash})")
+                            
+                            search_results = self.tavily.search(search_query)
+                            
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": function_name,
+                                "content": search_results or "No results found"
+                            })
+                            
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.error(f"Tool call parsing error: {type(e).__name__}")
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "name": function_name,
+                                "content": "Error parsing search request"
+                            })
+                            continue
                 
                 final_response = self.client.chat.completions.create(
                     model=self.model,
